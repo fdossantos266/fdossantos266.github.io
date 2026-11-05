@@ -12,7 +12,7 @@ const COULEURS = {
 
 //positions fixes 
 const noeuds =  [
-    {id: 0, x: 100, y: 300, proprio: "joueur", puissance: 10}
+    {id: 0, x: 100, y: 300, proprio: "joueur", puissance: 10},
     { id: 1,  x: 220, y: 180, proprio: "neutre", puissance: 5 },
     { id: 2,  x: 220, y: 420, proprio: "neutre", puissance: 5 },
     { id: 3,  x: 350, y: 100, proprio: "neutre", puissance: 8 },
