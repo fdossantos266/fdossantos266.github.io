@@ -58,8 +58,11 @@ function dessinerNoeuds() {
         ctx.fillStyle = COULEURS[n.proprio];
         ctx.fill();
         if (n === selection) {
-            ctx.strokeStyle = "#ffff00";   // contour jaune épais
+            ctx.strokeStyle = "#ffff00";
             ctx.lineWidth = 5;
+        } else if (selection !== null && sontRelies(selection, n)) {
+            ctx.strokeStyle = "#33ff99";   // cible possible en vert
+            ctx.lineWidth = 3;
         } else {
             ctx.strokeStyle = "white";
             ctx.lineWidth = 2;
@@ -95,6 +98,37 @@ function mettreAJour(dt) {
     }
 }
 
+// ===== 8. Attaque =====
+function sontRelies(a, b) {
+    for (const [x, y] of liens) {
+        if ((x === a.id && y === b.id) || (x === b.id && y === a.id)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function attaquer(source, cible) {
+    if (!sontRelies(source, cible)) return;
+
+    const force = Math.floor(source.puissance / 2);
+    if (force < 1) return;           // pas assez de puissance pour attaquer
+
+    source.puissance -= force;
+
+    if (cible.proprio === source.proprio) {
+        // Renfort entre deux serveurs alliés
+        cible.puissance = Math.min(cible.puissance + force, PUISSANCE_MAX);
+    } else if (force > cible.puissance) {
+        // Victoire : on pirate le serveur
+        cible.proprio = source.proprio;
+        cible.puissance = force - cible.puissance;
+    } else {
+        // Échec : on affaiblit la cible
+        cible.puissance -= force;
+    }
+}
+
 // ===== 7. Sélection au clic =====
 let selection = null;   // le serveur sélectionné, ou null si aucun
 
@@ -118,12 +152,14 @@ canvas.addEventListener("click", (event) => {
 
     const n = noeudSousLaSouris(x, y);
 
-    if (n === null) {
-        selection = null;        // clic dans le vide : on désélectionne
+       if (n === null) {
+        selection = null;
+    } else if (selection !== null && n !== selection && sontRelies(selection, n)) {
+        attaquer(selection, n);      // attaque ou renfort
+        selection = null;
     } else if (n.proprio === "joueur") {
-        selection = n;           // clic sur un de mes serveurs : on le sélectionne
+        selection = n;
     }
-    // Clic sur un serveur ennemi ou neutre : ce sera l'attaque (étape 5)
 });
 
 // ===== 6. Boucle de jeu =====
