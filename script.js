@@ -96,6 +96,19 @@ function mettreAJour(dt) {
             n.puissance = Math.min(n.puissance, PUISSANCE_MAX);
         }
     }
+        // Chaque IA décide quand son minuteur arrive à 0
+    for (const ia of ["ia1", "ia2"]) {
+        minuteursIA[ia] -= dt;
+        if (minuteursIA[ia] <= 0) {
+            jouerIA(ia);
+            minuteursIA[ia] = DELAI_IA + Math.random();   // un peu d'imprévu
+        }
+    }
+
+    // Si mon serveur sélectionné a été piraté, je perds la sélection
+    if (selection !== null && selection.proprio !== "joueur") {
+        selection = null;
+    }
 }
 
 // ===== 8. Attaque =====
@@ -161,6 +174,34 @@ canvas.addEventListener("click", (event) => {
         selection = n;
     }
 });
+
+// ===== 9. IA ennemie =====
+const DELAI_IA = 2;   // secondes entre deux décisions
+const minuteursIA = { ia1: DELAI_IA, ia2: DELAI_IA + 1 };
+
+function jouerIA(ia) {
+    let meilleur = null;   // la meilleure attaque trouvée
+
+    for (const source of noeuds) {
+        if (source.proprio !== ia) continue;   // seulement ses serveurs
+
+        const force = Math.floor(source.puissance / 2);
+
+        for (const cible of noeuds) {
+            if (cible.proprio === ia) continue;           // pas ses propres serveurs
+            if (!sontRelies(source, cible)) continue;     // seulement les voisins
+            if (force <= cible.puissance) continue;       // seulement les attaques gagnantes
+
+            if (meilleur === null || cible.puissance < meilleur.cible.puissance) {
+                meilleur = { source: source, cible: cible };
+            }
+        }
+    }
+
+    if (meilleur !== null) {
+        attaquer(meilleur.source, meilleur.cible);
+    }
+}
 
 // ===== 6. Boucle de jeu =====
 let dernierTemps = performance.now();
