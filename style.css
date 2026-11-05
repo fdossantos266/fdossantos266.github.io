@@ -1,0 +1,12 @@
+body{
+    background: #05070d;
+    color: #33ff99;
+    font-family: 'Courier New', monospace;
+    text-align: center;
+}
+
+canvas{
+    background: #0a0f1a;
+    border: 1px solid #33ff99;
+    max-width: 100%;
+}
