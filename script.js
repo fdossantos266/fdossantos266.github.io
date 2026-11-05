@@ -76,4 +76,32 @@ function dessiner() {
     dessinerNoeuds();
 }
 
-dessiner();
+// ===== 5. Mise à jour =====
+const CROISSANCE = 1;        // puissance gagnée par seconde
+const PUISSANCE_MAX = 99;    // plafond
+
+function mettreAJour(dt) {
+    for (const n of noeuds) {
+        // Les serveurs neutres ne grandissent pas
+        if (n.proprio !== "neutre") {
+            n.puissance += CROISSANCE * dt;
+            n.puissance = Math.min(n.puissance, PUISSANCE_MAX);
+        }
+    }
+}
+
+// ===== 6. Boucle de jeu =====
+let dernierTemps = performance.now();
+
+function boucle(maintenant) {
+    // Temps écoulé depuis la dernière image, en secondes
+    const dt = (maintenant - dernierTemps) / 1000;
+    dernierTemps = maintenant;
+
+    mettreAJour(dt);
+    dessiner();
+
+    requestAnimationFrame(boucle);
+}
+
+requestAnimationFrame(boucle);
