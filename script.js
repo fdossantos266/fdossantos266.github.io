@@ -57,8 +57,13 @@ function dessinerNoeuds() {
         ctx.arc(n.x, n.y, RAYON, 0, Math.PI * 2);
         ctx.fillStyle = COULEURS[n.proprio];
         ctx.fill();
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 2;
+        if (n === selection) {
+            ctx.strokeStyle = "#ffff00";   // contour jaune épais
+            ctx.lineWidth = 5;
+        } else {
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 2;
+        }
         ctx.stroke();
 
         // La puissance au centre
@@ -89,6 +94,37 @@ function mettreAJour(dt) {
         }
     }
 }
+
+// ===== 7. Sélection au clic =====
+let selection = null;   // le serveur sélectionné, ou null si aucun
+
+function noeudSousLaSouris(x, y) {
+    for (const n of noeuds) {
+        const dx = x - n.x;
+        const dy = y - n.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance <= RAYON) {
+            return n;
+        }
+    }
+    return null;
+}
+
+canvas.addEventListener("click", (event) => {
+    // Convertir la position de la souris en coordonnées du canvas
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+
+    const n = noeudSousLaSouris(x, y);
+
+    if (n === null) {
+        selection = null;        // clic dans le vide : on désélectionne
+    } else if (n.proprio === "joueur") {
+        selection = n;           // clic sur un de mes serveurs : on le sélectionne
+    }
+    // Clic sur un serveur ennemi ou neutre : ce sera l'attaque (étape 5)
+});
 
 // ===== 6. Boucle de jeu =====
 let dernierTemps = performance.now();
