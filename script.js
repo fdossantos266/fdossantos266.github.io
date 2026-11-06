@@ -374,11 +374,24 @@ function dessinerPause() {
     ctx.fillText("P, Échap ou clic pour reprendre", canvas.width / 2, canvas.height / 2 + 30);
 }
 
+// Au-dessus du serveur sélectionné : combien partira à la prochaine attaque
+function dessinerApercuEnvoi() {
+    if (selection === null) return;
+
+    const quantite = Math.floor(selection.puissance * fractionEnvoi);
+    ctx.fillStyle = "#ffff00";
+    ctx.font = "bold 14px Courier New";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("→ " + quantite, selection.x, selection.y - TAILLE_IMAGE / 2 - 22);
+}
+
 function dessiner() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     dessinerLiens();
     dessinerPaquets();
     dessinerNoeuds();
+    dessinerApercuEnvoi();
 
     if (etat === "pause") {
         dessinerPause();
@@ -398,10 +411,11 @@ function sontRelies(a, b) {
 }
 
 // Envoie un paquet de la source vers la cible
-function attaquer(source, cible) {
+// fraction = part de la puissance envoyée (0.5 par défaut, utilisé par l'IA)
+function attaquer(source, cible, fraction = 0.5) {
     if (!sontRelies(source, cible)) return;
 
-    const force = Math.floor(source.puissance / 2);
+    const force = Math.floor(source.puissance * fraction);
     if (force < 1) return;           // pas assez de puissance pour attaquer
 
     source.puissance -= force;
@@ -606,7 +620,7 @@ canvas.addEventListener("click", (event) => {
     if (n === null) {
         selection = null;                // clic dans le vide
     } else if (selection !== null && n !== selection && sontRelies(selection, n)) {
-        attaquer(selection, n);          // attaque ou renfort
+        attaquer(selection, n, fractionEnvoi);   // attaque ou renfort
         selection = null;
     } else if (n.proprio === "joueur") {
         selection = n;                   // sélection d'un de mes serveurs
@@ -688,6 +702,10 @@ document.addEventListener("keydown", (event) => {
     if (event.key === "p" || event.key === "P" || event.key === "Escape") {
         basculerPause();
     }
+    // Touches 1 à 5 : envoyer 20 %, 40 %, 60 %, 80 % ou 100 %
+    if (event.key >= "1" && event.key <= "5") {
+        changerEnvoi(Number(event.key) * 20);
+    }
 });
 
 // Pause automatique quand on change d'onglet
@@ -697,7 +715,22 @@ document.addEventListener("visibilitychange", () => {
     }
 });
 
-// ===== 14. Boucle de jeu =====
+// ===== 14. Quantité envoyée =====
+const curseurEnvoi = document.getElementById("envoi");
+const texteEnvoi = document.getElementById("valeur-envoi");
+let fractionEnvoi = 0.5;   // 50 % par défaut
+
+function changerEnvoi(pourcentage) {
+    fractionEnvoi = pourcentage / 100;
+    curseurEnvoi.value = pourcentage;
+    texteEnvoi.textContent = pourcentage + " %";
+}
+
+curseurEnvoi.addEventListener("input", () => {
+    changerEnvoi(Number(curseurEnvoi.value));
+});
+
+// ===== 15. Boucle de jeu =====
 let dernierTemps = performance.now();
 
 function boucle(maintenant) {
