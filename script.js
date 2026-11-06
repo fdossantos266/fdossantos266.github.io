@@ -3,9 +3,18 @@ const canvas = document.getElementById("jeu");
 const ctx = canvas.getContext("2d");
 
 const RAYON = 25;
-const CROISSANCE = 1;        // puissance gagnée par seconde
-const PUISSANCE_MAX = 99;    // plafond
-const DELAI_IA = 2;          // secondes entre deux décisions de l'IA
+const CROISSANCE = 1;          // puissance gagnée par seconde
+const PUISSANCE_MAX = 99;      // plafond
+const DELAI_IA = 2;            // secondes entre deux décisions de l'IA
+const VITESSE_PAQUET = 150;    // pixels par seconde
+
+// Réglages de la carte aléatoire
+const NB_NOEUDS = 14;
+const DISTANCE_MIN = 110;      // écart minimum entre deux serveurs
+const MARGE = 50;              // distance minimum avec les bords
+const NB_VOISINS = 2;          // chaque serveur est relié à ses 2 plus proches voisins
+const NB_PAREFEU = 2;
+const NB_DATACENTER = 2;
 
 const COULEURS = {
     neutre: "#555555",
@@ -14,42 +23,142 @@ const COULEURS = {
     ia2: "#ff9933"
 };
 
-// ===== 2. Les serveurs (nœuds) =====
-// id = position dans le tableau
-let noeuds = [
-    { id: 0,  x: 100, y: 300, proprio: "joueur", puissance: 10 },
-    { id: 1,  x: 220, y: 180, proprio: "neutre", puissance: 5 },
-    { id: 2,  x: 220, y: 420, proprio: "neutre", puissance: 5 },
-    { id: 3,  x: 350, y: 100, proprio: "neutre", puissance: 8 },
-    { id: 4,  x: 360, y: 300, proprio: "neutre", puissance: 12 },
-    { id: 5,  x: 350, y: 500, proprio: "neutre", puissance: 8 },
-    { id: 6,  x: 500, y: 200, proprio: "neutre", puissance: 10 },
-    { id: 7,  x: 500, y: 400, proprio: "neutre", puissance: 10 },
-    { id: 8,  x: 600, y: 300, proprio: "neutre", puissance: 15 },
-    { id: 9,  x: 700, y: 100, proprio: "ia1",    puissance: 10 },
-    { id: 10, x: 700, y: 500, proprio: "ia2",    puissance: 10 }
-];
-
-// Copie de la carte de départ, pour pouvoir rejouer
-const CARTE_INITIALE = structuredClone(noeuds);
-
-// ===== 3. Les câbles (liens) =====
-// Chaque lien relie deux id de nœuds
-const liens = [
-    [0, 1], [0, 2],
-    [1, 3], [1, 4], [2, 4], [2, 5],
-    [3, 6], [4, 6], [4, 7], [5, 7],
-    [6, 8], [7, 8],
-    [3, 9], [6, 9], [8, 9],
-    [5, 10], [7, 10], [8, 10]
-];
-
-// ===== 4. État du jeu =====
+// ===== 2. État du jeu =====
+let noeuds = [];           // les serveurs
+let liens = [];            // les câbles : paires d'id [a, b]
+let paquets = [];          // les attaques en cours de trajet
 let selection = null;      // le serveur sélectionné, ou null si aucun
 let etat = "enCours";      // "enCours", "pause", "victoire" ou "defaite"
 const minuteursIA = { ia1: DELAI_IA, ia2: DELAI_IA + 1 };
 const infoServeurs = document.getElementById("info-serveurs");
 const infoEnnemis = document.getElementById("info-ennemis");
+
+// ===== 3. Outils =====
+function distance(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+function entierAleatoire(min, max) {
+    return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+// Mélange de Fisher-Yates
+function melanger(tableau) {
+    for (let i = tableau.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [tableau[i], tableau[j]] = [tableau[j], tableau[i]];
+    }
+    return tableau;
+}
+
+// ===== 4. Carte aléatoire =====
+function placerPoints() {
+    // Les 3 points de départ sont fixes pour que la partie soit équitable
+    const points = [
+        { x: 80,  y: 300 },   // joueur
+        { x: 720, y: 90 },    // IA 1
+        { x: 720, y: 510 }    // IA 2
+    ];
+
+    let essais = 0;
+    while (points.length < NB_NOEUDS && essais < 2000) {
+        essais++;
+        const p = {
+            x: MARGE + Math.random() * (canvas.width - 2 * MARGE),
+            y: MARGE + Math.random() * (canvas.height - 2 * MARGE)
+        };
+        // On garde le point seulement s'il est assez loin de tous les autres
+        if (points.every(q => distance(p, q) >= DISTANCE_MIN)) {
+            points.push(p);
+        }
+    }
+    return points;
+}
+
+function relierVoisins(points) {
+    const resultat = [];
+    const dejaVus = new Set();
+
+    for (let i = 0; i < points.length; i++) {
+        // Tous les autres points, du plus proche au plus loin
+        const autres = [];
+        for (let j = 0; j < points.length; j++) {
+            if (j !== i) autres.push(j);
+        }
+        autres.sort((a, b) => distance(points[i], points[a]) - distance(points[i], points[b]));
+
+        for (const j of autres.slice(0, NB_VOISINS)) {
+            const a = Math.min(i, j);
+            const b = Math.max(i, j);
+            const cle = a + "-" + b;
+            if (!dejaVus.has(cle)) {
+                dejaVus.add(cle);
+                resultat.push([a, b]);
+            }
+        }
+    }
+    return resultat;
+}
+
+// Parcours en largeur : peut-on aller du serveur 0 à tous les autres ?
+function estConnexe(nbPoints, lesLiens) {
+    const visites = new Set([0]);
+    const file = [0];
+
+    while (file.length > 0) {
+        const courant = file.shift();
+        for (const [a, b] of lesLiens) {
+            let voisin = null;
+            if (a === courant) voisin = b;
+            if (b === courant) voisin = a;
+            if (voisin !== null && !visites.has(voisin)) {
+                visites.add(voisin);
+                file.push(voisin);
+            }
+        }
+    }
+    return visites.size === nbPoints;
+}
+
+function genererCarte() {
+    let points;
+    let nouveauxLiens;
+
+    // On recommence tant que la carte n'est pas valide
+    do {
+        points = placerPoints();
+        nouveauxLiens = relierVoisins(points);
+    } while (points.length < NB_NOEUDS || !estConnexe(points.length, nouveauxLiens));
+
+    noeuds = points.map((p, i) => ({
+        id: i,
+        x: Math.round(p.x),
+        y: Math.round(p.y),
+        proprio: "neutre",
+        puissance: entierAleatoire(5, 15),
+        type: "normal"
+    }));
+
+    noeuds[0].proprio = "joueur";
+    noeuds[1].proprio = "ia1";
+    noeuds[2].proprio = "ia2";
+    for (let i = 0; i < 3; i++) {
+        noeuds[i].puissance = 10;
+    }
+
+    // Types spéciaux, placés au hasard sur des serveurs neutres
+    const neutres = melanger(noeuds.slice(3));
+    for (let i = 0; i < NB_PAREFEU; i++) {
+        neutres[i].type = "parefeu";
+    }
+    for (let i = NB_PAREFEU; i < NB_PAREFEU + NB_DATACENTER; i++) {
+        neutres[i].type = "datacenter";
+    }
+
+    liens = nouveauxLiens;
+}
 
 // ===== 5. Dessin =====
 function dessinerLiens() {
@@ -66,8 +175,39 @@ function dessinerLiens() {
     }
 }
 
+function dessinerPaquets() {
+    for (const p of paquets) {
+        // Position entre la source et la cible selon la progression (0 → 1)
+        const x = p.source.x + (p.cible.x - p.source.x) * p.progression;
+        const y = p.source.y + (p.cible.y - p.source.y) * p.progression;
+
+        ctx.beginPath();
+        ctx.arc(x, y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = COULEURS[p.proprio];
+        ctx.fill();
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = "white";
+        ctx.font = "bold 11px Courier New";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(p.force, x, y - 14);
+    }
+}
+
 function dessinerNoeuds() {
     for (const n of noeuds) {
+        // Anneau supplémentaire pour les pare-feu
+        if (n.type === "parefeu") {
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, RAYON + 6, 0, Math.PI * 2);
+            ctx.strokeStyle = "#33ff99";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
         // Le cercle
         ctx.beginPath();
         ctx.arc(n.x, n.y, RAYON, 0, Math.PI * 2);
@@ -93,11 +233,18 @@ function dessinerNoeuds() {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(Math.floor(n.puissance), n.x, n.y);
+
+        // Étiquette du type sous le serveur
+        if (n.type !== "normal") {
+            ctx.fillStyle = "#33ff99";
+            ctx.font = "bold 11px Courier New";
+            const etiquette = n.type === "parefeu" ? "FW" : "DC";
+            ctx.fillText(etiquette, n.x, n.y + RAYON + 14);
+        }
     }
 }
 
 function dessinerFin() {
-    // Voile sombre sur tout le jeu
     ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -115,7 +262,7 @@ function dessinerFin() {
 
     ctx.fillStyle = "white";
     ctx.font = "20px Courier New";
-    ctx.fillText("Clique pour rejouer", canvas.width / 2, canvas.height / 2 + 30);
+    ctx.fillText("Clique pour une nouvelle carte", canvas.width / 2, canvas.height / 2 + 30);
 }
 
 function dessinerPause() {
@@ -137,6 +284,7 @@ function dessinerPause() {
 function dessiner() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     dessinerLiens();
+    dessinerPaquets();
     dessinerNoeuds();
 
     if (etat === "pause") {
@@ -156,6 +304,7 @@ function sontRelies(a, b) {
     return false;
 }
 
+// Envoie un paquet de la source vers la cible
 function attaquer(source, cible) {
     if (!sontRelies(source, cible)) return;
 
@@ -164,17 +313,51 @@ function attaquer(source, cible) {
 
     source.puissance -= force;
 
-    if (cible.proprio === source.proprio) {
+    paquets.push({
+        source: source,
+        cible: cible,
+        proprio: source.proprio,
+        force: force,
+        progression: 0               // 0 = au départ, 1 = arrivé
+    });
+}
+
+// Ce qui se passe quand un paquet arrive à destination
+function arriveePaquet(p) {
+    const cible = p.cible;
+
+    if (cible.proprio === p.proprio) {
         // Renfort entre deux serveurs alliés
-        cible.puissance = Math.min(cible.puissance + force, PUISSANCE_MAX);
-    } else if (force > cible.puissance) {
+        cible.puissance = Math.min(cible.puissance + p.force, PUISSANCE_MAX);
+        return;
+    }
+
+    // Un pare-feu divise la force de l'attaque par 2
+    let force = p.force;
+    if (cible.type === "parefeu") {
+        force = force / 2;
+    }
+
+    if (force > cible.puissance) {
         // Victoire : on pirate le serveur
-        cible.proprio = source.proprio;
+        cible.proprio = p.proprio;
         cible.puissance = force - cible.puissance;
     } else {
         // Échec : on affaiblit la cible
         cible.puissance -= force;
     }
+}
+
+function mettreAJourPaquets(dt) {
+    for (const p of paquets) {
+        // On avance d'une fraction du trajet, selon la longueur du câble
+        p.progression += (VITESSE_PAQUET * dt) / distance(p.source, p.cible);
+        if (p.progression >= 1) {
+            arriveePaquet(p);
+        }
+    }
+    // On retire les paquets arrivés
+    paquets = paquets.filter(p => p.progression < 1);
 }
 
 // ===== 7. IA ennemie =====
@@ -189,10 +372,13 @@ function jouerIA(ia) {
         for (const cible of noeuds) {
             if (cible.proprio === ia) continue;           // pas ses propres serveurs
             if (!sontRelies(source, cible)) continue;     // seulement les voisins
-            if (force <= cible.puissance) continue;       // seulement les attaques gagnantes
 
-            if (meilleur === null || cible.puissance < meilleur.cible.puissance) {
-                meilleur = { source: source, cible: cible };
+            // Un pare-feu compte double en défense
+            const defense = cible.type === "parefeu" ? cible.puissance * 2 : cible.puissance;
+            if (force <= defense) continue;               // seulement les attaques gagnantes
+
+            if (meilleur === null || defense < meilleur.defense) {
+                meilleur = { source: source, cible: cible, defense: defense };
             }
         }
     }
@@ -210,8 +396,9 @@ function compter(proprio) {
 function verifierFin() {
     const mesServeurs = compter("joueur");
     const serveursEnnemis = compter("ia1") + compter("ia2");
+    const mesPaquets = paquets.filter(p => p.proprio === "joueur").length;
 
-    if (mesServeurs === 0) {
+    if (mesServeurs === 0 && mesPaquets === 0) {
         etat = "defaite";
     } else if (serveursEnnemis === 0) {
         etat = "victoire";
@@ -228,7 +415,8 @@ function mettreAJourInfos() {
 }
 
 function nouvellePartie() {
-    noeuds = structuredClone(CARTE_INITIALE);
+    genererCarte();
+    paquets = [];
     selection = null;
     etat = "enCours";
     minuteursIA.ia1 = DELAI_IA;
@@ -243,10 +431,13 @@ function mettreAJour(dt) {
     // Croissance des serveurs (les neutres ne grandissent pas)
     for (const n of noeuds) {
         if (n.proprio !== "neutre") {
-            n.puissance += CROISSANCE * dt;
+            const bonus = n.type === "datacenter" ? 2 : 1;
+            n.puissance += CROISSANCE * bonus * dt;
             n.puissance = Math.min(n.puissance, PUISSANCE_MAX);
         }
     }
+
+    mettreAJourPaquets(dt);
 
     // Chaque IA décide quand son minuteur arrive à 0
     for (const ia of ["ia1", "ia2"]) {
@@ -269,10 +460,7 @@ function mettreAJour(dt) {
 // ===== 10. Clic de la souris =====
 function noeudSousLaSouris(x, y) {
     for (const n of noeuds) {
-        const dx = x - n.x;
-        const dy = y - n.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance <= RAYON) {
+        if (distance({ x: x, y: y }, n) <= RAYON) {
             return n;
         }
     }
@@ -286,7 +474,7 @@ canvas.addEventListener("click", (event) => {
         return;
     }
 
-    // Partie finie : un clic relance une partie
+    // Partie finie : un clic lance une nouvelle carte
     if (etat === "victoire" || etat === "defaite") {
         nouvellePartie();
         return;
@@ -332,12 +520,12 @@ function hexVersRgb(hex) {
 function tropProches(couleur1, couleur2) {
     const a = hexVersRgb(couleur1);
     const b = hexVersRgb(couleur2);
-    const distance = Math.sqrt(
+    const d = Math.sqrt(
         (a.r - b.r) ** 2 +
         (a.g - b.g) ** 2 +
         (a.b - b.b) ** 2
     );
-    return distance < 80;
+    return d < 80;
 }
 
 for (const proprio of ["joueur", "ia1", "ia2"]) {
@@ -407,4 +595,5 @@ function boucle(maintenant) {
     requestAnimationFrame(boucle);
 }
 
+nouvellePartie();              // première carte
 requestAnimationFrame(boucle);
