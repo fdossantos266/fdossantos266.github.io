@@ -2,7 +2,7 @@
 const canvas = document.getElementById("jeu");
 const ctx = canvas.getContext("2d");
 
-const RAYON = 25;
+const RAYON = 36;
 const CROISSANCE = 1;          // puissance gagnée par seconde
 const PUISSANCE_MAX = 99;      // plafond
 const DELAI_IA = 2;            // secondes entre deux décisions de l'IA
@@ -10,7 +10,7 @@ const VITESSE_PAQUET = 150;    // pixels par seconde
 
 // Réglages de la carte aléatoire
 const NB_NOEUDS = 14;
-const DISTANCE_MIN = 110;      // écart minimum entre deux serveurs
+const DISTANCE_MIN = 130;      // écart minimum entre deux serveurs
 const MARGE = 50;              // distance minimum avec les bords
 const NB_VOISINS = 2;          // chaque serveur est relié à ses 2 plus proches voisins
 const NB_PAREFEU = 2;
@@ -160,7 +160,35 @@ function genererCarte() {
     liens = nouveauxLiens;
 }
 
-// ===== 5. Dessin =====
+// ===== 5. Images (pixel art) =====
+const TAILLE_IMAGE = 72;
+
+function chargerImage(chemin) {
+    const img = new Image();
+    img.src = chemin;
+    return img;
+}
+
+const IMAGES = {
+    poste: chargerImage("images/poste.png"),
+    datacenter: chargerImage("images/datacenter.png"),
+    parefeu: chargerImage("images/parefeu.png")
+};
+
+// Quelle image pour ce serveur ? (null = pas d'image)
+function imagePour(n) {
+    if (n.type === "datacenter") return IMAGES.datacenter;
+    if (n.type === "parefeu") return IMAGES.parefeu;
+    if (n.proprio === "joueur") return IMAGES.poste;
+    return null;
+}
+
+// Une image est utilisable si elle est chargée et pas cassée
+function imagePrete(img) {
+    return img !== null && img.complete && img.naturalWidth > 0;
+}
+
+// ===== 6. Dessin =====
 function dessinerLiens() {
     ctx.strokeStyle = "#1f5f3f";
     ctx.lineWidth = 2;
@@ -197,49 +225,98 @@ function dessinerPaquets() {
     }
 }
 
-function dessinerNoeuds() {
-    for (const n of noeuds) {
-        // Anneau supplémentaire pour les pare-feu
-        if (n.type === "parefeu") {
-            ctx.beginPath();
-            ctx.arc(n.x, n.y, RAYON + 6, 0, Math.PI * 2);
-            ctx.strokeStyle = "#33ff99";
-            ctx.lineWidth = 2;
-            ctx.stroke();
-        }
+// Serveur avec sprite : l'image remplace le cercle
+function dessinerNoeudImage(n, img) {
+    const moitie = TAILLE_IMAGE / 2;
 
-        // Le cercle
+    // Le sprite, avec un halo de la couleur du propriétaire
+    ctx.save();
+    ctx.shadowColor = COULEURS[n.proprio];
+    ctx.shadowBlur = 20;
+    ctx.drawImage(img, n.x - moitie, n.y - moitie, TAILLE_IMAGE, TAILLE_IMAGE);
+    ctx.restore();
+
+    // Cadre : jaune si sélectionné, vert si cible possible
+    if (n === selection) {
+        ctx.strokeStyle = "#ffff00";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(n.x - moitie - 4, n.y - moitie - 4, TAILLE_IMAGE + 8, TAILLE_IMAGE + 8);
+    } else if (selection !== null && sontRelies(selection, n)) {
+        ctx.strokeStyle = "#33ff99";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(n.x - moitie - 4, n.y - moitie - 4, TAILLE_IMAGE + 8, TAILLE_IMAGE + 8);
+    }
+
+    // Badge de puissance, de la couleur du propriétaire
+    const yBadge = n.y + moitie + 10;
+    ctx.fillStyle = COULEURS[n.proprio];
+    ctx.fillRect(n.x - 16, yBadge - 9, 32, 18);
+
+    ctx.font = "bold 13px Courier New";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.strokeStyle = "black";             // contour noir : lisible sur toutes les couleurs
+    ctx.lineWidth = 3;
+    ctx.strokeText(Math.floor(n.puissance), n.x, yBadge);
+    ctx.fillStyle = "white";
+    ctx.fillText(Math.floor(n.puissance), n.x, yBadge);
+}
+
+// Serveur sans sprite : le cercle classique
+function dessinerNoeudCercle(n) {
+    // Anneau supplémentaire pour les pare-feu
+    if (n.type === "parefeu") {
         ctx.beginPath();
-        ctx.arc(n.x, n.y, RAYON, 0, Math.PI * 2);
-        ctx.fillStyle = COULEURS[n.proprio];
-        ctx.fill();
-
-        // Le contour : sélection, cible possible ou normal
-        if (n === selection) {
-            ctx.strokeStyle = "#ffff00";
-            ctx.lineWidth = 5;
-        } else if (selection !== null && sontRelies(selection, n)) {
-            ctx.strokeStyle = "#33ff99";
-            ctx.lineWidth = 3;
-        } else {
-            ctx.strokeStyle = "white";
-            ctx.lineWidth = 2;
-        }
+        ctx.arc(n.x, n.y, RAYON + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = "#33ff99";
+        ctx.lineWidth = 2;
         ctx.stroke();
+    }
 
-        // La puissance au centre
-        ctx.fillStyle = "white";
-        ctx.font = "bold 16px Courier New";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(Math.floor(n.puissance), n.x, n.y);
+    // Le cercle
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, RAYON, 0, Math.PI * 2);
+    ctx.fillStyle = COULEURS[n.proprio];
+    ctx.fill();
 
-        // Étiquette du type sous le serveur
-        if (n.type !== "normal") {
-            ctx.fillStyle = "#33ff99";
-            ctx.font = "bold 11px Courier New";
-            const etiquette = n.type === "parefeu" ? "FW" : "DC";
-            ctx.fillText(etiquette, n.x, n.y + RAYON + 14);
+    // Le contour : sélection, cible possible ou normal
+    if (n === selection) {
+        ctx.strokeStyle = "#ffff00";
+        ctx.lineWidth = 5;
+    } else if (selection !== null && sontRelies(selection, n)) {
+        ctx.strokeStyle = "#33ff99";
+        ctx.lineWidth = 3;
+    } else {
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 2;
+    }
+    ctx.stroke();
+
+    // La puissance au centre
+    ctx.fillStyle = "white";
+    ctx.font = "bold 16px Courier New";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(Math.floor(n.puissance), n.x, n.y);
+
+    // Étiquette du type (en attendant les sprites DC / FW)
+    if (n.type !== "normal") {
+        ctx.fillStyle = "#33ff99";
+        ctx.font = "bold 11px Courier New";
+        const etiquette = n.type === "parefeu" ? "FW" : "DC";
+        ctx.fillText(etiquette, n.x, n.y + RAYON + 14);
+    }
+}
+
+function dessinerNoeuds() {
+    ctx.imageSmoothingEnabled = false;   // garde le pixel art net
+
+    for (const n of noeuds) {
+        const img = imagePour(n);
+        if (imagePrete(img)) {
+            dessinerNoeudImage(n, img);
+        } else {
+            dessinerNoeudCercle(n);
         }
     }
 }
@@ -294,7 +371,7 @@ function dessiner() {
     }
 }
 
-// ===== 6. Attaque =====
+// ===== 7. Attaque =====
 function sontRelies(a, b) {
     for (const [x, y] of liens) {
         if ((x === a.id && y === b.id) || (x === b.id && y === a.id)) {
@@ -360,7 +437,7 @@ function mettreAJourPaquets(dt) {
     paquets = paquets.filter(p => p.progression < 1);
 }
 
-// ===== 7. IA ennemie =====
+// ===== 8. IA ennemie =====
 function jouerIA(ia) {
     let meilleur = null;   // la meilleure attaque trouvée
 
@@ -388,7 +465,7 @@ function jouerIA(ia) {
     }
 }
 
-// ===== 8. Fin de partie =====
+// ===== 9. Fin de partie =====
 function compter(proprio) {
     return noeuds.filter(n => n.proprio === proprio).length;
 }
@@ -424,7 +501,7 @@ function nouvellePartie() {
     boutonPause.textContent = "⏸ Pause";
 }
 
-// ===== 9. Mise à jour (appelée à chaque image) =====
+// ===== 10. Mise à jour (appelée à chaque image) =====
 function mettreAJour(dt) {
     if (etat !== "enCours") return;   // le jeu est figé en pause ou à la fin
 
@@ -457,7 +534,7 @@ function mettreAJour(dt) {
     mettreAJourInfos();
 }
 
-// ===== 10. Clic de la souris =====
+// ===== 11. Clic de la souris =====
 function noeudSousLaSouris(x, y) {
     for (const n of noeuds) {
         if (distance({ x: x, y: y }, n) <= RAYON) {
@@ -497,7 +574,7 @@ canvas.addEventListener("click", (event) => {
     }
 });
 
-// ===== 11. Choix des couleurs =====
+// ===== 12. Choix des couleurs =====
 const avertissement = document.getElementById("avertissement");
 
 const NOMS = {
@@ -551,7 +628,7 @@ for (const proprio of ["joueur", "ia1", "ia2"]) {
     });
 }
 
-// ===== 12. Pause =====
+// ===== 13. Pause =====
 const boutonPause = document.getElementById("bouton-pause");
 
 function basculerPause() {
@@ -581,7 +658,7 @@ document.addEventListener("visibilitychange", () => {
     }
 });
 
-// ===== 13. Boucle de jeu =====
+// ===== 14. Boucle de jeu =====
 let dernierTemps = performance.now();
 
 function boucle(maintenant) {
