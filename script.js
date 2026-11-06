@@ -48,7 +48,8 @@ const liens = [
 let selection = null;      // le serveur sélectionné, ou null si aucun
 let etat = "enCours";      // "enCours", "victoire" ou "defaite"
 const minuteursIA = { ia1: DELAI_IA, ia2: DELAI_IA + 1 };
-const infos = document.getElementById("infos");
+const infoServeurs = document.getElementById("info-serveurs");
+const infoEnnemis = document.getElementById("info-ennemis");
 
 // ===== 5. Dessin =====
 function dessinerLiens() {
@@ -203,7 +204,8 @@ function mettreAJourInfos() {
     if (compter("ia1") > 0) ennemisRestants++;
     if (compter("ia2") > 0) ennemisRestants++;
 
-    infos.textContent = `Serveurs : ${compter("joueur")} / ${noeuds.length} | Ennemis restants : ${ennemisRestants}`;
+    infoServeurs.textContent = `${compter("joueur")} / ${noeuds.length}`;
+    infoEnnemis.textContent = ennemisRestants;
 }
 
 function nouvellePartie() {
@@ -281,7 +283,61 @@ canvas.addEventListener("click", (event) => {
     }
 });
 
-// ===== 11. Boucle de jeu =====
+// ===== 11. Choix des couleurs =====
+const avertissement = document.getElementById("avertissement");
+
+const NOMS = {
+    neutre: "les serveurs neutres",
+    joueur: "toi",
+    ia1: "l'IA 1",
+    ia2: "l'IA 2"
+};
+
+// "#ff3344" → { r: 255, g: 51, b: 68 }
+function hexVersRgb(hex) {
+    return {
+        r: parseInt(hex.slice(1, 3), 16),
+        g: parseInt(hex.slice(3, 5), 16),
+        b: parseInt(hex.slice(5, 7), 16)
+    };
+}
+
+// Deux couleurs sont "trop proches" si leur distance RGB est petite
+function tropProches(couleur1, couleur2) {
+    const a = hexVersRgb(couleur1);
+    const b = hexVersRgb(couleur2);
+    const distance = Math.sqrt(
+        (a.r - b.r) ** 2 +
+        (a.g - b.g) ** 2 +
+        (a.b - b.b) ** 2
+    );
+    return distance < 80;
+}
+
+for (const proprio of ["joueur", "ia1", "ia2"]) {
+    const input = document.getElementById("couleur-" + proprio);
+
+    input.addEventListener("input", () => {
+        const nouvelle = input.value;
+
+        // Comparer avec toutes les autres couleurs
+        for (const autre in COULEURS) {
+            if (autre === proprio) continue;
+
+            if (tropProches(nouvelle, COULEURS[autre])) {
+                avertissement.textContent = `⚠ Couleur trop proche de celle de ${NOMS[autre]} !`;
+                input.value = COULEURS[proprio];   // on remet l'ancienne couleur
+                return;
+            }
+        }
+
+        // Couleur valide : on l'applique
+        COULEURS[proprio] = nouvelle;
+        avertissement.textContent = "";
+    });
+}
+
+// ===== 12. Boucle de jeu =====
 let dernierTemps = performance.now();
 
 function boucle(maintenant) {

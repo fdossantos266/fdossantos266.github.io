@@ -3,18 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>cyberconquest</title>
+    <title>NetConquest</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header>
-        <h1>cyberconquest</h1>
+        <h1>NetConquest</h1>
+        <p class="sous-titre">&gt; infiltre le réseau<span class="curseur">_</span></p>
     </header>
-    <p id="infos">serveurs : 1 | ennemis : 2</p>
-    <canvas id = "jeu" width="800" height="600"></canvas>
-    <p>Clique sur un de tes serveurs puis sur un des serveurs reliés pour les attaquer.</p>
+
+    <main>
+        <div class="hud">
+            <div class="stat">
+                <span class="label">Serveurs</span>
+                <span id="info-serveurs" class="valeur">1 / 11</span>
+            </div>
+            <div class="stat">
+                <span class="label">Ennemis restants</span>
+                <span id="info-ennemis" class="valeur">2</span>
+            </div>
+        </div>
+
+        <div class="couleurs">
+            <label>Toi
+                <input type="color" id="couleur-joueur" value="#00ff15">
+            </label>
+            <label>IA 1
+                <input type="color" id="couleur-ia1" value="#ff3344">
+            </label>
+            <label>IA 2
+                <input type="color" id="couleur-ia2" value="#ff9933">
+            </label>
+        </div>
+        <p id="avertissement" class="avertissement"></p>
+
+        <div class="fenetre">
+            <div class="barre">
+                <span class="point rouge"></span>
+                <span class="point jaune"></span>
+                <span class="point vert"></span>
+                <span class="titre-fenetre">netconquest.exe</span>
+            </div>
+            <canvas id="jeu" width="800" height="600"></canvas>
+        </div>
+
+        <section class="aide">
+            <h2>Comment jouer</h2>
+            <ul>
+                <li><strong>Clic</strong> sur un de tes serveurs pour le sélectionner</li>
+                <li><strong>Clic</strong> sur un serveur relié pour l'attaquer ou le renforcer</li>
+                <li>Chaque action envoie la moitié de ta puissance</li>
+                <li>Pirate tous les serveurs ennemis pour gagner</li>
+            </ul>
+        </section>
+    </main>
+
+    <footer>Projet L1 Informatique · Université de Guyane</footer>
 
     <script src="script.js"></script>
 </body>
-
 </html>
