@@ -160,6 +160,21 @@ main {
     opacity: 0.6;
 }
 
+#bouton-pause {
+    margin-left: 12px;
+    padding: 4px 10px;
+    background: transparent;
+    color: var(--vert);
+    border: 1px solid var(--vert-doux);
+    border-radius: 4px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+#bouton-pause:hover {
+    background: var(--vert-doux);
+}
+
 canvas {
     display: block;
     width: 100%;

@@ -46,7 +46,7 @@ const liens = [
 
 // ===== 4. État du jeu =====
 let selection = null;      // le serveur sélectionné, ou null si aucun
-let etat = "enCours";      // "enCours", "victoire" ou "defaite"
+let etat = "enCours";      // "enCours", "pause", "victoire" ou "defaite"
 const minuteursIA = { ia1: DELAI_IA, ia2: DELAI_IA + 1 };
 const infoServeurs = document.getElementById("info-serveurs");
 const infoEnnemis = document.getElementById("info-ennemis");
@@ -118,11 +118,30 @@ function dessinerFin() {
     ctx.fillText("Clique pour rejouer", canvas.width / 2, canvas.height / 2 + 30);
 }
 
+function dessinerPause() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.fillStyle = "#33ff99";
+    ctx.font = "bold 48px Courier New";
+    ctx.fillText("PAUSE", canvas.width / 2, canvas.height / 2 - 30);
+
+    ctx.fillStyle = "white";
+    ctx.font = "20px Courier New";
+    ctx.fillText("P, Échap ou clic pour reprendre", canvas.width / 2, canvas.height / 2 + 30);
+}
+
 function dessiner() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     dessinerLiens();
     dessinerNoeuds();
-    if (etat !== "enCours") {
+
+    if (etat === "pause") {
+        dessinerPause();
+    } else if (etat === "victoire" || etat === "defaite") {
         dessinerFin();
     }
 }
@@ -214,11 +233,12 @@ function nouvellePartie() {
     etat = "enCours";
     minuteursIA.ia1 = DELAI_IA;
     minuteursIA.ia2 = DELAI_IA + 1;
+    boutonPause.textContent = "⏸ Pause";
 }
 
 // ===== 9. Mise à jour (appelée à chaque image) =====
 function mettreAJour(dt) {
-    if (etat !== "enCours") return;   // le jeu est figé à la fin
+    if (etat !== "enCours") return;   // le jeu est figé en pause ou à la fin
 
     // Croissance des serveurs (les neutres ne grandissent pas)
     for (const n of noeuds) {
@@ -260,8 +280,14 @@ function noeudSousLaSouris(x, y) {
 }
 
 canvas.addEventListener("click", (event) => {
+    // En pause : un clic reprend la partie
+    if (etat === "pause") {
+        basculerPause();
+        return;
+    }
+
     // Partie finie : un clic relance une partie
-    if (etat !== "enCours") {
+    if (etat === "victoire" || etat === "defaite") {
         nouvellePartie();
         return;
     }
@@ -337,7 +363,37 @@ for (const proprio of ["joueur", "ia1", "ia2"]) {
     });
 }
 
-// ===== 12. Boucle de jeu =====
+// ===== 12. Pause =====
+const boutonPause = document.getElementById("bouton-pause");
+
+function basculerPause() {
+    if (etat === "enCours") {
+        etat = "pause";
+        selection = null;
+        boutonPause.textContent = "▶ Reprendre";
+    } else if (etat === "pause") {
+        etat = "enCours";
+        boutonPause.textContent = "⏸ Pause";
+    }
+    // En victoire ou défaite, le bouton ne fait rien
+}
+
+boutonPause.addEventListener("click", basculerPause);
+
+document.addEventListener("keydown", (event) => {
+    if (event.key === "p" || event.key === "P" || event.key === "Escape") {
+        basculerPause();
+    }
+});
+
+// Pause automatique quand on change d'onglet
+document.addEventListener("visibilitychange", () => {
+    if (document.hidden && etat === "enCours") {
+        basculerPause();
+    }
+});
+
+// ===== 13. Boucle de jeu =====
 let dernierTemps = performance.now();
 
 function boucle(maintenant) {
