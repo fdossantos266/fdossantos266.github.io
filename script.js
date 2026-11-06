@@ -170,17 +170,26 @@ function chargerImage(chemin) {
 }
 
 const IMAGES = {
-    poste: chargerImage("images/poste.png"),
+    joueur: chargerImage("images/poste.png"),
+    ia1: chargerImage("images/ia1.png"),
+    ia2: chargerImage("images/ia2.png"),
     datacenter: chargerImage("images/datacenter.png"),
     parefeu: chargerImage("images/parefeu.png")
 };
 
-// Quelle image pour ce serveur ? (null = pas d'image)
+// Quelle image pour ce serveur ? (null = pas d'image, on dessine un cercle)
 function imagePour(n) {
+    // Les types spéciaux ont leur propre sprite
     if (n.type === "datacenter") return IMAGES.datacenter;
     if (n.type === "parefeu") return IMAGES.parefeu;
-    if (n.proprio === "joueur") return IMAGES.poste;
-    return null;
+
+    // Les serveurs neutres restent des cercles gris
+    if (n.proprio === "neutre") return null;
+
+    // Sprite du propriétaire s'il existe, sinon le poste par défaut
+    const sprite = IMAGES[n.proprio];
+    if (imagePrete(sprite)) return sprite;
+    return IMAGES.joueur;
 }
 
 // Une image est utilisable si elle est chargée et pas cassée
@@ -260,6 +269,13 @@ function dessinerNoeudImage(n, img) {
     ctx.strokeText(Math.floor(n.puissance), n.x, yBadge);
     ctx.fillStyle = "white";
     ctx.fillText(Math.floor(n.puissance), n.x, yBadge);
+
+    // Rappel du bonus de défense au-dessus des pare-feu
+    if (n.type === "parefeu") {
+        ctx.fillStyle = "#33ff99";
+        ctx.font = "bold 11px Courier New";
+        ctx.fillText("DÉF ×2", n.x, n.y - moitie - 8);
+    }
 }
 
 // Serveur sans sprite : le cercle classique
@@ -399,6 +415,12 @@ function attaquer(source, cible) {
     });
 }
 
+// Défense d'un serveur : la puissance affichée, doublée pour un pare-feu
+function defenseDe(n) {
+    const base = Math.floor(n.puissance);
+    return n.type === "parefeu" ? base * 2 : base;
+}
+
 // Ce qui se passe quand un paquet arrive à destination
 function arriveePaquet(p) {
     const cible = p.cible;
@@ -409,19 +431,16 @@ function arriveePaquet(p) {
         return;
     }
 
-    // Un pare-feu divise la force de l'attaque par 2
-    let force = p.force;
-    if (cible.type === "parefeu") {
-        force = force / 2;
-    }
+    const defense = defenseDe(cible);
 
-    if (force > cible.puissance) {
-        // Victoire : on pirate le serveur
+    if (p.force > defense) {
+        // Victoire : on pirate le serveur, il garde ce qui reste de l'attaque
         cible.proprio = p.proprio;
-        cible.puissance = force - cible.puissance;
+        cible.puissance = p.force - defense;
     } else {
-        // Échec : on affaiblit la cible
-        cible.puissance -= force;
+        // Échec : la cible perd des points (un pare-feu n'en perd que la moitié)
+        const degats = cible.type === "parefeu" ? Math.floor(p.force / 2) : p.force;
+        cible.puissance = Math.floor(cible.puissance) - degats;
     }
 }
 
@@ -438,6 +457,20 @@ function mettreAJourPaquets(dt) {
 }
 
 // ===== 8. IA ennemie =====
+// La cible continue de grandir pendant le trajet du paquet : l'IA en tient compte
+function defenseALArrivee(source, cible) {
+    let defense = defenseDe(cible);
+
+    if (cible.proprio !== "neutre") {
+        const trajet = distance(source, cible) / VITESSE_PAQUET;   // en secondes
+        const bonus = cible.type === "datacenter" ? 2 : 1;
+        let croissance = CROISSANCE * bonus * trajet;
+        if (cible.type === "parefeu") croissance *= 2;
+        defense += Math.ceil(croissance);
+    }
+    return defense;
+}
+
 function jouerIA(ia) {
     let meilleur = null;   // la meilleure attaque trouvée
 
@@ -450,8 +483,8 @@ function jouerIA(ia) {
             if (cible.proprio === ia) continue;           // pas ses propres serveurs
             if (!sontRelies(source, cible)) continue;     // seulement les voisins
 
-            // Un pare-feu compte double en défense
-            const defense = cible.type === "parefeu" ? cible.puissance * 2 : cible.puissance;
+            // Défense estimée au moment où le paquet arrivera
+            const defense = defenseALArrivee(source, cible);
             if (force <= defense) continue;               // seulement les attaques gagnantes
 
             if (meilleur === null || defense < meilleur.defense) {
@@ -536,8 +569,14 @@ function mettreAJour(dt) {
 
 // ===== 11. Clic de la souris =====
 function noeudSousLaSouris(x, y) {
+    // Échelle d'affichage du canvas (1 sur PC, environ 0.45 sur téléphone)
+    const echelle = canvas.getBoundingClientRect().width / canvas.width;
+
+    // Zone cliquable d'au moins 22 px réels autour du centre (44 px de diamètre)
+    const tolerance = Math.max(RAYON, 22 / echelle);
+
     for (const n of noeuds) {
-        if (distance({ x: x, y: y }, n) <= RAYON) {
+        if (distance({ x: x, y: y }, n) <= tolerance) {
             return n;
         }
     }
